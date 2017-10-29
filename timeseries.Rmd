@@ -1,0 +1,141 @@
+---
+title: "Time_series_toy_example"
+author: "Steven Smith"
+date: "10/29/2017"
+output: html_document
+---
+
+```{r setup}
+
+library(ggplot2)
+library(gridExtra) ## grid.arrange to glue all plots together
+library(reshape) ## For changing data table from wide to long
+output_dir<-"~/" ## Output dir for plot
+FIGURE_LONG_PLOT<-"Dummy_timeseries_plot" ## Name of plot
+```
+
+## Generate/source data
+
+```{r}
+
+## 16S/OTU plot, e.g., counts of each taxa vs time
+otu<-data.frame(
+  TIME=c(1,2,3,4,5), ## Serialized time - may not fully match with your metadata. 
+  species1=runif(5,min = 20,max = 200),
+  species2=runif(5,min = 20,max = 200),
+  species3=runif(5,min = 100,max = 2000),
+  species4=runif(5,min = 0,max = 10)
+)
+
+# Melt OTU to long form for easier ggplotting
+otu.long<-melt(otu,id.vars = c("TIME"),variable_name = "species")
+
+## The metatdata table was encoded as binary yes/no responses or on a scale. 
+## To encode this for the plot,I simply multiplied the encoded 1/0 by where I wanted it on the grid.
+
+metadata<-data.frame(
+  TIME=c(1,2,3,4,5), ## Serialized time
+  medication=1*c(0,0,1,0,0),
+  vag_dis=2*c(0,1,0,1,0),
+  vag_odor=3*c(1,1,1,1,0)
+)
+
+```
+
+## Figure out the global time scale
+```{r}
+## Since all plots need to be on the same scale, need to define global time scale.
+## I did this with a seperate function once I had all my data loaded, but for purposes here, just set to known time scale
+time_limits<-c(0.5,5.5) ## Lower and upper bound of x axis on plot
+time_label<-c("Day 1","","Day 3","","Day 5") ## Which time points to label. 
+time_breaks<-c(1,2,3,NA,5) ## Missing time series data won't get a tic mark... to distinguish it from 0 data.
+
+```
+
+## Define each plot type
+1.  Bar plot (16S data)
+2.  Metadata plot
+
+```{r define_plots}
+
+#### OTU Plot
+otuPlot<-ggplot(otu.long, aes(x=TIME,y=value,fill=species))+
+  geom_bar(position = "fill",stat = "identity")+
+      theme_bw()+
+    theme(legend.position = "none", ## Removes legend from plot
+          panel.grid.major.y=element_line(colour = "grey73"), ## Makes the lines stick out less
+          panel.grid.minor.x  = element_blank(), ## Gets rid of minor tics
+          axis.ticks = element_blank(),  ## Set the x axis tics, title and text to blank since the metatdata plot will be on the bottom and share the same x-axis
+          axis.title.x=element_blank(),
+          axis.text.x = element_blank()
+          )+
+    xlab("")+ ## This is blank because the metatdata plot will be on the bottom and share the same x-axis
+    ylab("Relative abundance")+
+    scale_x_continuous(breaks=time_breaks,label=time_label,limits=time_limits)
+
+
+#### Metadata plot
+## There are alternative ways to do this... one way is to include all the right 
+metaPlot<-ggplot(metadata, aes(x=TIME))+
+    geom_point(aes(y=medication,size=2),
+               pch=16,col='blue',position = position_dodge(width=0.5))+ ## you can map pch and color to values in the data table as well if you wanted to encode it that way
+    geom_point(aes(y=vag_dis,size=2),
+               pch=1,col='red',position = position_dodge(width=0.5))+
+    geom_point(aes(y=vag_odor,size=2),
+               col='green',pch=16, position = position_dodge(width=0.5))+
+      theme_bw()+
+    theme(legend.position = "none", ## Removes legend from plot
+          panel.grid.major.y=element_line(colour = "grey73"),
+          panel.grid.minor.x  = element_blank() ## Gets rid of minor tics
+          #plot.margin=unit(c(-2.5,40,5,5),units="points"),
+          )+
+    xlab("Day")+
+    ylab("")+
+    scale_x_continuous(breaks=time_breaks,label=time_label,limits=time_limits)+
+    scale_y_continuous(breaks=1:3,labels = c("Medication",
+                                             "Discharge",
+                                             "Odor"),limits=c(0.5,3.5))
+```
+
+
+## Tie plots together
+
+
+```{r tie_plots}
+### ///////////////////////////////////////////// ###
+  ### /////////    Tie Plots Together     ///////// ###
+  ### ///////////////////////////////////////////// ###
+  
+  ## ////////////////////////// ##
+  ## //Define plots as Grobs/// ##
+  ## ////////////////////////// ##
+  
+  grob.otuPlot <- ggplotGrob(otuPlot)
+  grob.metaPlot <- ggplotGrob(metaPlot)
+  
+  ## ////////////////////////// ##
+  ## ///   Find max width   /// ##
+  ## ////////////////////////// ##
+  maxWidth = grid::unit.pmax(grob.otuPlot$widths[1:6],
+                             grob.metaPlot$widths[1:5])
+  
+  ## ////////////////////////// ##
+  ## /Redefine common max width ##
+  ## ////////////////////////// ##
+  grob.otuPlot$widths[1:6] <- as.list(maxWidth)
+  grob.metaPlot$widths[1:6] <- as.list(maxWidth)
+  
+  ### ///////////////////////////////////////////// ###
+  ### /////////      Write/Draw Plot     ///////// ###
+  ### ///////////////////////////////////////////// ###
+  
+  cairo_ps(paste0(output_dir,FIGURE_LONG_PLOT,".eps"),width = 11,height = 8.5)
+  
+  grid.arrange(grob.otuPlot,
+               grob.metaPlot, 
+               ncol=1,nrow=2,
+               heights=c(2.5,1)) 
+  dev.off()
+
+```
+
